@@ -39,13 +39,33 @@ const STYLE_CONFIG: Record<CaptionStyle, { color: string; stroke: string; fontSi
   death:   { color: "#FF5959", stroke: "2px black",   fontSize: 30 },
 };
 
+// Preset selected in the Editor "Captions" tool → how the burned-in text looks.
+type PresetCfg = {
+  color: string;
+  stroke?: string;
+  bg?: string;
+  uppercase?: boolean;
+  weight?: number;
+  fontSize: number;
+};
+const PRESET_CONFIG: Record<string, PresetCfg> = {
+  "bold-yellow": { color: "#FFD93D", stroke: "1.5px black", fontSize: 26, weight: 800 },
+  "white-box": { color: "#ffffff", bg: "#000000", fontSize: 24, weight: 700 },
+  "minimal-white": { color: "#ffffff", fontSize: 22, weight: 600 },
+  "red-impact": { color: "#FF4D4D", stroke: "1.5px white", uppercase: true, fontSize: 28, weight: 800 },
+  "blue-highlight": { color: "#ffffff", bg: "#2563eb", fontSize: 24, weight: 700 },
+  meme: { color: "#ffffff", stroke: "2px black", uppercase: true, fontSize: 28, weight: 800 },
+};
+
 type Props = {
   className?: string;
   /** Scale the typography up/down for smaller frames (e.g. carousel = 0.8). */
   scale?: number;
+  /** Caption preset id (Editor). Overrides per-line styles when set. */
+  styleId?: string;
 };
 
-export function CaptionOverlay({ className, scale = 1 }: Props) {
+export function CaptionOverlay({ className, scale = 1, styleId }: Props) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -59,7 +79,14 @@ export function CaptionOverlay({ className, scale = 1 }: Props) {
   const active = CAPTIONS.find((c) => elapsed >= c.start && elapsed < c.end);
   if (!active) return null;
 
-  const cfg = STYLE_CONFIG[active.style ?? "default"];
+  const preset = styleId ? PRESET_CONFIG[styleId] : undefined;
+  const base = STYLE_CONFIG[active.style ?? "default"];
+  // A selected preset wins; otherwise fall back to the per-line transcript style.
+  const color = preset?.color ?? base.color;
+  const stroke = preset ? preset.stroke : base.stroke;
+  const fontSize = (preset?.fontSize ?? base.fontSize) * scale;
+  const uppercase = preset ? preset.uppercase ?? false : true;
+  const weight = preset?.weight ?? 800;
 
   return (
     <div
@@ -70,13 +97,19 @@ export function CaptionOverlay({ className, scale = 1 }: Props) {
     >
       <p
         key={`${active.start}-${active.text}`}
-        className="inline-block whitespace-pre-line text-balance px-3 py-1 font-extrabold uppercase leading-[1.05] tracking-tight animate-in fade-in zoom-in-95 duration-200"
+        className={cn(
+          "inline-block whitespace-pre-line text-balance px-3 py-1 leading-[1.05] tracking-tight animate-in fade-in zoom-in-95 duration-200",
+          uppercase && "uppercase"
+        )}
         style={{
-          color: cfg.color,
-          WebkitTextStroke: cfg.stroke,
-          textShadow:
-            "0 2px 0 rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.35)",
-          fontSize: cfg.fontSize * scale,
+          color,
+          WebkitTextStroke: stroke,
+          backgroundColor: preset?.bg,
+          fontWeight: weight,
+          textShadow: preset?.bg
+            ? undefined
+            : "0 2px 0 rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.35)",
+          fontSize,
           fontFamily:
             'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto',
           letterSpacing: "-0.01em",

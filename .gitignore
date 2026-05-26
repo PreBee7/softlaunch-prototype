@@ -42,3 +42,4 @@ next-env.d.ts
 
 # Claude Code local config (per-user permission cache)
 /.claude/
+.backups/

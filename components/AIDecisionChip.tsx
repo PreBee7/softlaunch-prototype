@@ -91,7 +91,7 @@ export function AIDecisionChip({ kind, label, value, rationale }: Props) {
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {locked ? "Locked — Coach won’t change this" : "Lock this decision"}
+            {locked ? "Locked — the editor won’t change this" : "Lock this decision"}
           </TooltipContent>
         </Tooltip>
 

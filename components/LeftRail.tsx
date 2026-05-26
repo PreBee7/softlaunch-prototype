@@ -20,7 +20,7 @@ export function LeftRail({ active, onChange }: Props) {
   return (
     <nav
       aria-label="Phase"
-      className="flex w-[72px] shrink-0 flex-col border-r border-border bg-card/30"
+      className="flex w-[72px] shrink-0 flex-col border-r border-[hsl(var(--border-subtle))] bg-transparent"
     >
       <ul className="flex flex-col">
         {items.map((it) => {
@@ -36,20 +36,27 @@ export function LeftRail({ active, onChange }: Props) {
                 className={cn(
                   "group flex w-full flex-col items-center gap-1.5 px-2 py-4 transition-colors duration-150",
                   isActive
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                    ? "text-indigo-500"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Icon
-                  className={cn(
-                    "size-5 transition-colors duration-150",
-                    isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
-                  )}
-                />
                 <span
                   className={cn(
-                    "text-[11px] leading-tight tracking-tight transition-colors duration-150",
-                    isActive ? "font-medium text-foreground" : "text-muted-foreground group-hover:text-foreground"
+                    "flex items-center justify-center rounded-md p-1.5 transition-colors duration-150",
+                    isActive && "bg-indigo-500/10"
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "size-5 transition-colors duration-150",
+                      isActive ? "text-indigo-500" : "text-muted-foreground group-hover:text-foreground"
+                    )}
+                  />
+                </span>
+                <span
+                  className={cn(
+                    "text-xs leading-tight transition-colors duration-150",
+                    isActive ? "text-indigo-500" : "text-muted-foreground group-hover:text-foreground"
                   )}
                 >
                   {it.label}

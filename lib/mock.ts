@@ -24,6 +24,10 @@ export type Moment = {
   confidence: number;
   evidence: Evidence[];
   reasoning: string;
+  /** Short creator-facing reason shown under each thumbnail. */
+  whyChosen?: string;
+  /** AI-suggested portrait crop position within the landscape stream. */
+  crop?: "left" | "center" | "right";
   // small data series for the detail panel
   chatVelocity: number[];
   audioWaveform: number[];
@@ -59,6 +63,14 @@ export type RecentRecording = {
   thumbnail?: string;
 };
 
+// Wireframe mode — hide real videos/screenshots until final assets are
+// provided. Flip to false (or replace media() calls) to show real media.
+const HIDE_MEDIA = true;
+const media = (path: string): string | undefined =>
+  HIDE_MEDIA ? undefined : path;
+
+// Recent recordings use real thumbnails (GameStream, SS1, SS4, SS2) — shown
+// regardless of HIDE_MEDIA so the import gallery isn't a wireframe placeholder.
 export const recentRecordings: RecentRecording[] = [
   {
     id: "r1",
@@ -82,7 +94,7 @@ export const recentRecordings: RecentRecording[] = [
     duration: "1h 48m",
     recordedAt: "Mar 12, 8:02 PM",
     game: "Just Chatting",
-    thumbnail: "/assets/SS2.png",
+    thumbnail: "/assets/SS4.png",
   },
   {
     id: "r4",
@@ -90,7 +102,7 @@ export const recentRecordings: RecentRecording[] = [
     duration: "2h 23m",
     recordedAt: "Mar 10, 10:45 PM",
     game: "Apex Legends",
-    thumbnail: "/assets/SS4.png",
+    thumbnail: "/assets/SS2.png",
   },
 ];
 
@@ -102,6 +114,24 @@ export const intentPresets = [
   "Strong hooks",
   "Under 30 seconds",
 ] as const;
+
+// Clicking an intent chip auto-populates the prompt with a plain,
+// creator-facing sentence. "Enhance prompt" (promptEnhancements below)
+// then expands it into a richer AI instruction.
+export const intentPrompts: Record<string, string> = {
+  "Funny moments":
+    "Find funny moments with strong creator reaction and chat response.",
+  "High-energy reactions":
+    "Find high-energy moments where the creator's reaction really lands.",
+  "Chat spikes":
+    "Find moments where chat suddenly spikes above its normal pace.",
+  "Clutch plays":
+    "Find clutch gameplay moments with a clear reaction in the same beat.",
+  "Strong hooks":
+    "Find moments with a strong first 3 seconds that work as a hook.",
+  "Under 30 seconds":
+    "Find short, self-contained moments that land in under 30 seconds.",
+};
 
 // Mock "Enhance prompt" — a creator-facing intent expands into a clearer
 // AI instruction. Keyed by the chip label.
@@ -124,6 +154,8 @@ export const moments: Moment[] = [
   {
     id: "m1",
     title: "Clutch 1v3 to close out Round 14",
+    whyChosen: "Facecam and voice reaction are visible at the same time.",
+    crop: "center",
     game: "Valorant",
     start: "1:47:22",
     end: "1:47:40",
@@ -139,11 +171,13 @@ export const moments: Moment[] = [
     chatVelocity: [12, 14, 18, 22, 30, 38, 62, 110, 161, 134, 88, 54, 40, 32, 28],
     audioWaveform: [0.18, 0.22, 0.3, 0.42, 0.55, 0.78, 0.92, 0.88, 0.71, 0.6, 0.48, 0.36, 0.28, 0.22, 0.18],
     viewerDelta: [942, 944, 948, 955, 970, 988, 1004, 1018, 1026, 1030, 1028, 1024, 1022, 1020, 1018],
-    videoUrl: "/assets/GameStream.mov",
+    videoUrl: "/assets/LandscapeStream11.mov",
   },
   {
     id: "m2",
     title: "Reading the most unhinged superchat",
+    whyChosen: "A strong quoted line with chat reacting instantly.",
+    crop: "left",
     game: "Just Chatting",
     start: "0:34:15",
     end: "0:34:48",
@@ -159,11 +193,13 @@ export const moments: Moment[] = [
     chatVelocity: [20, 24, 32, 58, 92, 124, 161, 158, 142, 118, 88, 64, 48, 36, 28],
     audioWaveform: [0.3, 0.38, 0.46, 0.52, 0.58, 0.62, 0.55, 0.5, 0.48, 0.46, 0.42, 0.38, 0.32, 0.28, 0.24],
     viewerDelta: [820, 824, 830, 838, 848, 860, 872, 880, 884, 886, 884, 880, 876, 872, 868],
-    videoUrl: "/assets/Short2.mov",
+    videoUrl: "/assets/LandscapeStream22.mov",
   },
   {
     id: "m3",
     title: "100m snipe across Storm Point",
+    whyChosen: "Tight clip — the call and the kill hit in the first 3 seconds.",
+    crop: "right",
     game: "Apex Legends",
     start: "2:12:08",
     end: "2:12:22",
@@ -179,11 +215,13 @@ export const moments: Moment[] = [
     chatVelocity: [28, 30, 34, 42, 58, 84, 118, 124, 102, 78, 56, 42, 34, 30, 28],
     audioWaveform: [0.22, 0.28, 0.34, 0.52, 0.78, 0.86, 0.72, 0.58, 0.46, 0.38, 0.32, 0.28, 0.24, 0.22, 0.2],
     viewerDelta: [1102, 1108, 1116, 1126, 1142, 1158, 1170, 1178, 1184, 1186, 1184, 1180, 1178, 1176, 1174],
-    videoUrl: "/assets/GameStream.mov",
+    videoUrl: "/assets/LandscapeStream33.mov",
   },
   {
     id: "m4",
     title: "Game crashes mid-tournament — reaction",
+    whyChosen: "A big, relatable reaction the moment it goes wrong.",
+    crop: "center",
     game: "Valorant",
     start: "0:58:47",
     end: "0:59:09",
@@ -199,11 +237,13 @@ export const moments: Moment[] = [
     chatVelocity: [42, 48, 56, 72, 98, 124, 138, 128, 108, 88, 70, 56, 48, 44, 42],
     audioWaveform: [0.28, 0.34, 0.42, 0.58, 0.72, 0.84, 0.76, 0.62, 0.5, 0.42, 0.36, 0.32, 0.28, 0.26, 0.24],
     viewerDelta: [882, 884, 886, 888, 890, 892, 894, 894, 892, 890, 888, 886, 884, 882, 880],
-    videoUrl: "/assets/Short3.mov",
+    videoUrl: media("/assets/Short3.mov"),
   },
   {
     id: "m5",
     title: "Explaining the new agent meta in 90s",
+    whyChosen: "The opening line works on its own as a hook.",
+    crop: "left",
     game: "Valorant",
     start: "1:23:51",
     end: "1:25:22",
@@ -219,11 +259,13 @@ export const moments: Moment[] = [
     chatVelocity: [38, 40, 42, 46, 52, 58, 64, 68, 70, 72, 70, 66, 62, 58, 54],
     audioWaveform: [0.32, 0.36, 0.38, 0.4, 0.42, 0.44, 0.42, 0.4, 0.38, 0.36, 0.34, 0.32, 0.3, 0.28, 0.26],
     viewerDelta: [1018, 1020, 1022, 1024, 1024, 1024, 1022, 1020, 1018, 1014, 1010, 1006, 1002, 998, 994],
-    videoUrl: "/assets/Short2.mov",
+    videoUrl: media("/assets/Short2.mov"),
   },
   {
     id: "m6",
     title: "Surprise raid lands mid-rant",
+    whyChosen: "Chat spikes hard the moment the raid lands.",
+    crop: "right",
     game: "Just Chatting",
     start: "2:35:09",
     end: "2:35:31",
@@ -239,7 +281,7 @@ export const moments: Moment[] = [
     chatVelocity: [22, 28, 38, 62, 98, 148, 192, 184, 152, 118, 88, 64, 48, 38, 32],
     audioWaveform: [0.24, 0.3, 0.38, 0.46, 0.52, 0.58, 0.54, 0.5, 0.46, 0.42, 0.38, 0.34, 0.3, 0.28, 0.26],
     viewerDelta: [758, 770, 788, 812, 842, 878, 912, 938, 952, 958, 956, 952, 948, 944, 940],
-    videoUrl: "/assets/Short3.mov",
+    videoUrl: media("/assets/Short3.mov"),
   },
 ];
 

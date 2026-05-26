@@ -1,44 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ArrowLeft, Rocket } from "lucide-react";
+import { Rocket } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
+// Minimal top bar — SoftLaunch wordmark on the left, user avatar on the right.
 export function TopBar() {
-  const pathname = usePathname();
-  // Hide back button on Import (the entry / home screen) itself.
-  const showBack = pathname !== "/import" && pathname !== "/";
-
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-6">
-      <div className="flex items-center gap-3">
-        {showBack && (
-          <Link
-            href="/import"
-            aria-label="Back to Import"
-            className="flex size-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-          </Link>
-        )}
-        <Link
-          href="/import"
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight transition-colors duration-150 hover:text-foreground/90"
-        >
-          <Rocket className="size-4 -rotate-45" />
-          SoftLaunch
-        </Link>
-      </div>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="hidden font-medium md:inline">Maya</span>
-        <span
-          aria-hidden
-          className="inline-flex size-7 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-          style={{ background: "oklch(0.55 0.16 30)" }}
-        >
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/40 bg-background px-4">
+      <Link
+        href="/import"
+        aria-label="SoftLaunch — back to start"
+        className="flex items-center gap-2 text-sm font-semibold tracking-tight transition-colors duration-150 hover:text-foreground/90"
+      >
+        <Rocket className="size-4 -rotate-45" />
+        SoftLaunch
+      </Link>
+
+      {/* Maya's avatar — image with an indigo "M" fallback */}
+      <Avatar className="size-7">
+        <AvatarImage src="/assets/Avatar%20Image.jpg" alt="Maya" />
+        <AvatarFallback className="bg-indigo-500 text-xs font-medium text-white">
           M
-        </span>
-      </div>
+        </AvatarFallback>
+      </Avatar>
     </header>
   );
 }

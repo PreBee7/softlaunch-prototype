@@ -55,7 +55,7 @@ export default function EditorPage() {
                 {selected.title}
               </h1>
               <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                AI built a 0:18 vertical draft. Refine with Coach or lock decisions you like.
+                AI built a 0:18 vertical draft. Refine with the editor or lock decisions you like.
               </p>
             </div>
             <Button asChild variant="ghost" size="sm" className="gap-1.5">
@@ -92,7 +92,7 @@ export default function EditorPage() {
                 ))}
               </ul>
               <p className="mt-3 px-1 text-[11px] leading-relaxed text-muted-foreground">
-                Lock the decisions you want to keep. Coach won&apos;t touch locked items.
+                Lock the decisions you want to keep. The editor won&apos;t touch locked items.
               </p>
             </ScrollArea>
           </aside>
@@ -231,7 +231,7 @@ export default function EditorPage() {
                   <span className="absolute inline-flex size-2 animate-ping rounded-full bg-foreground/50" />
                   <span className="relative inline-flex size-2 rounded-full bg-foreground" />
                 </span>
-                <h2 className="text-sm font-medium">Coach</h2>
+                <h2 className="text-sm font-medium">Editor</h2>
               </div>
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 {coachThread.length} turns
@@ -283,7 +283,7 @@ export default function EditorPage() {
                 <Textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Tell Coach what to change…"
+                  placeholder="Tell the editor what to change…"
                   rows={3}
                   className="resize-none pr-12"
                 />
@@ -363,7 +363,7 @@ function CoachTurn({
       <p className="text-sm leading-snug text-foreground/90">&ldquo;{user}&rdquo;</p>
       <div className="border-t border-border/60 pt-2 -mt-px">
         <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-          Coach
+          Editor
         </div>
         <p className="text-sm leading-snug">{aiSummary}</p>
         <div className="mt-2 flex items-center justify-between">
