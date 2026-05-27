@@ -106,6 +106,59 @@ export const recentRecordings: RecentRecording[] = [
   },
 ];
 
+// Recent short-form videos the creator has made in SoftLaunch (portrait
+// reels/shorts/tiktoks). Shown on the Import screen so creators can reopen,
+// duplicate, or just see what they've shipped recently.
+export type RecentVideoStatus = "draft" | "scheduled" | "published";
+export type RecentVideoPlatform = "TikTok" | "Reels" | "Shorts";
+export type RecentVideo = {
+  id: string;
+  title: string;
+  duration: string;            // "0:24"
+  createdAt: string;           // human-readable: "Today", "2 days ago"
+  platforms: RecentVideoPlatform[];
+  status: RecentVideoStatus;   // affects the status pill on the card
+  videoUrl?: string;           // when omitted, falls back to a gradient tile
+};
+
+export const recentVideos: RecentVideo[] = [
+  {
+    id: "v1",
+    title: "Clutch 1v3 to close Round 14",
+    duration: "0:18",
+    createdAt: "Today",
+    platforms: ["TikTok", "Reels", "Shorts"],
+    status: "published",
+    videoUrl: "/assets/Short.mov",
+  },
+  {
+    id: "v2",
+    title: "Most unhinged superchat reaction",
+    duration: "0:34",
+    createdAt: "Yesterday",
+    platforms: ["TikTok", "Reels"],
+    status: "published",
+    videoUrl: "/assets/Short2.mov",
+  },
+  {
+    id: "v3",
+    title: "100m snipe across Storm Point",
+    duration: "0:22",
+    createdAt: "3 days ago",
+    platforms: ["TikTok", "Shorts"],
+    status: "scheduled",
+    videoUrl: "/assets/Short3.mov",
+  },
+  {
+    id: "v4",
+    title: "Game crashes mid-tournament",
+    duration: "0:27",
+    createdAt: "Last week",
+    platforms: ["TikTok"],
+    status: "draft",
+  },
+];
+
 export const intentPresets = [
   "Funny moments",
   "High-energy reactions",
@@ -153,7 +206,7 @@ export const promptEnhancements: Record<string, string> = {
 export const moments: Moment[] = [
   {
     id: "m1",
-    title: "Clutch 1v3 to close out Round 14",
+    title: "Clutch 1v3 to close Round 14",
     whyChosen: "Facecam and voice reaction are visible at the same time.",
     crop: "center",
     game: "Valorant",

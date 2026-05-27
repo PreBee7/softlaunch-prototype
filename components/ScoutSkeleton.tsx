@@ -44,7 +44,7 @@ export function ScoutSkeleton({ durationMs = 1600 }: { durationMs?: number }) {
 
   return (
     <div
-      className="flex h-[calc(100vh-3rem)] min-h-0 overflow-hidden"
+      className="flex h-[calc(100vh-2.5rem)] min-h-0 overflow-hidden"
       aria-busy="true"
       aria-label="Preparing Scout"
     >

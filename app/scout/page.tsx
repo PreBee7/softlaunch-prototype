@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -13,6 +14,9 @@ import {
   X,
   Clock,
   Sparkles,
+  Volume2,
+  SkipBack,
+  SkipForward,
   UploadCloud,
   Type,
   Captions,
@@ -22,6 +26,8 @@ import {
   Scissors,
   Film,
   Undo2,
+  Trash2,
+  Download,
   type LucideIcon,
 } from "lucide-react";
 import { LeftRail, type Phase } from "@/components/LeftRail";
@@ -95,9 +101,21 @@ export default function ScoutPage() {
   const selected = moments[activeIndex];
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] min-h-0 overflow-hidden">
+    <div className="flex h-[calc(100vh-2.5rem)] min-h-0 overflow-hidden">
       {/* Left rail */}
-      <LeftRail active={activePhase} onChange={setActivePhase} />
+      <LeftRail
+        active={activePhase}
+        onChange={setActivePhase}
+        unlocked={{
+          editor: selectedIds.length > 0,
+          // Once Editor is accessible, Export is too — no gating between them.
+          export: selectedIds.length > 0,
+        }}
+        lockedTooltips={{
+          editor: "Select moments to enter Editor",
+          export: "Select moments to enter Export",
+        }}
+      />
 
       {/* Tools panel + working area — one per phase */}
       {activePhase === "scout" && (
@@ -225,21 +243,69 @@ function ChatBubble({
 }
 
 function ScoutWorkspace(p: WorkspaceProps) {
-  const stats = useMemo(() => statsFor(p.selected), [p.selected]);
-
   // Each "scan" is a ranking (order) of the moments. Scan 1 is the initial set.
   const [order, setOrder] = useState<number[]>(() => moments.map((_, i) => i));
   const [reranking, setReranking] = useState(false);
   const [scanNumber, setScanNumber] = useState(1);
   const [scanLabel, setScanLabel] = useState("Scan 1");
 
+  // Per-delete snapshot stack — lets the user undo an accidental delete.
+  // We snapshot the whole `order` + whether the deleted moment was in the
+  // user's timeline so undo restores both.
+  type DeletedSnapshot = {
+    prevOrder: number[];
+    deletedMomentIdx: number;
+    wasInTimeline: boolean;
+  };
+  const [deleteHistory, setDeleteHistory] = useState<DeletedSnapshot[]>([]);
+
+  // Remove every occurrence of the currently-active moment from the filmstrip.
+  // Also removes it from the user's selected-moments timeline if it was there.
+  // Active selection slides to whatever moment is now at the same position.
+  const deleteActiveMoment = () => {
+    if (order.length === 0) return;
+    const deletedMomentIdx = p.activeIndex;
+    const deletedPos = order.indexOf(deletedMomentIdx);
+    const newOrder = order.filter((idx) => idx !== deletedMomentIdx);
+    if (newOrder.length === order.length) return; // nothing to remove
+    const m = moments[deletedMomentIdx];
+    const wasInTimeline = p.selectedIds.includes(m.id);
+
+    setDeleteHistory((h) => [
+      ...h,
+      { prevOrder: order, deletedMomentIdx, wasInTimeline },
+    ]);
+    setOrder(newOrder);
+    if (wasInTimeline) p.removeMoment(m.id);
+    if (newOrder.length > 0) {
+      const nextPos = Math.min(Math.max(0, deletedPos), newOrder.length - 1);
+      p.onChangeIndex(newOrder[nextPos]);
+    }
+  };
+
+  // Restore the most recent delete: bring the order back, jump to the
+  // moment that was deleted, and re-add it to the timeline if it was there.
+  const undoDelete = () => {
+    setDeleteHistory((h) => {
+      if (h.length === 0) return h;
+      const last = h[h.length - 1];
+      setOrder(last.prevOrder);
+      p.onChangeIndex(last.deletedMomentIdx);
+      if (last.wasInTimeline) p.addMoment(moments[last.deletedMomentIdx].id);
+      return h.slice(0, -1);
+    });
+  };
+
   // Chat thread continuing from the Import intent. The opening user/AI bubbles
   // are derived live; follow-up turns (incl. loading + restore) live here.
   const [query, setQuery] = useState("");
   const [thread, setThread] = useState<ScoutMsg[]>([]);
 
-  // Re-scan: add a chat turn + loading bubble, skeleton the moment areas, then
-  // swap in a fresh set of 6 mocked moments. Keeps the previous scan to restore.
+  // Re-scan: add a chat turn + loading bubble, then APPEND a fresh batch of
+  // moments to the filmstrip (no replace). Keeps the previous scan to restore.
+  // Mock note: we only have 6 base moments in lib/mock, so the appended batch
+  // re-uses those indices in a shuffled order — visually it reads as "more
+  // moments". The ThumbnailStrip key includes the position so React is happy.
   const submitQuery = () => {
     if (reranking) return;
     const text = query.trim() || "Find different moments.";
@@ -256,19 +322,23 @@ function ScoutWorkspace(p: WorkspaceProps) {
     setReranking(true);
 
     setTimeout(() => {
-      const next = [...moments.map((_, i) => i)].sort(() => Math.random() - 0.5);
+      const newBatch = [...moments.map((_, i) => i)].sort(
+        () => Math.random() - 0.5
+      );
+      const next = [...order, ...newBatch];
       const num = prevScan.scanNumber + 1;
       setOrder(next);
       setScanNumber(num);
       setScanLabel(`Scan ${num}`);
-      p.onChangeIndex(next[0]);
+      // Keep the user on the moment they were viewing — the new ones append
+      // to the end of the filmstrip.
       setThread((t) =>
         t.map((m) =>
           m.id === loadingId
             ? {
                 id: loadingId,
                 role: "ai",
-                text: "I found 6 new moments based on that.",
+                text: `Added ${newBatch.length} more moments. You now have ${next.length} total.`,
                 restore: prevScan,
               }
             : m
@@ -292,33 +362,82 @@ function ScoutWorkspace(p: WorkspaceProps) {
       {/* Working area — two columns: 65% preview (hero) · 35% why this moment */}
       <div className="flex flex-1 min-w-0 flex-col">
         <div className="flex flex-1 min-h-0">
-          {/* Left main column — scan label · filmstrip · name · preview */}
-          <div className="flex w-[65%] min-w-0 flex-col bg-[hsl(var(--surface-canvas))]">
-            {/* Scan label (left) + Create video CTA (right). Sits at the top
-                of the main preview section — the assembly timeline that used
-                to host this CTA belongs in Editor, not Scout. */}
-            <div className="flex shrink-0 items-center justify-between gap-3 px-6 pt-3">
-              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {reranking
-                  ? "Scanning…"
-                  : `${scanLabel} · ${order.length} moments found`}
-              </span>
-              <Button
-                size="sm"
-                onClick={p.onCreateVideo}
-                disabled={p.timelineMoments.length === 0}
-                className={cn(
-                  "transition-all duration-150 ease-out",
-                  p.timelineMoments.length > 0
-                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                    : "cursor-not-allowed bg-muted text-muted-foreground disabled:opacity-100"
-                )}
-              >
-                Create video
-              </Button>
+          {/* Main column — Frame 3 order: moment name · preview · annotated track · scan label + CTA · filmstrip.
+              Tighter vertical padding so everything fits on a 13" MacBook without scrolling.
+              px-[30px] on each content row aligns with the filmstrip's content edge
+              (ThumbnailStrip wraps thumbs in px-6 + inner p-1.5 = 30px inset). */}
+          <div className="flex w-full min-w-0 flex-col bg-[hsl(var(--surface-canvas))] pt-5 pb-6">
+            {/* 1. Moment name — "Moment N · <title>". Always visible — the
+                preview never blanks out during re-scan because Scout (the
+                chat panel) carries the loading state, not this column. */}
+            <div className="shrink-0 px-[30px] text-center">
+              <h2 className="text-base font-semibold leading-snug text-foreground">
+                Moment {order.indexOf(p.activeIndex) + 1} · {p.selected.title}
+              </h2>
             </div>
 
-            {/* Moment filmstrip selector (top) */}
+            {/* 2. Selected moment preview — always visible. */}
+            <div className="flex min-h-0 flex-1 items-center justify-center px-[30px] pt-2">
+              <MomentPreview moment={p.selected} />
+            </div>
+
+            {/* 3. Annotated moment track — always visible. */}
+            <div className="shrink-0 px-[30px] pt-3">
+              <MomentAnnotationTrack moment={p.selected} />
+            </div>
+
+            {/* 4. Scan results count (left) + Undo / Delete / Create video (right). Aligns with filmstrip below. */}
+            <div className="flex shrink-0 items-center justify-between gap-3 px-[30px] pt-3">
+              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {reranking
+                  ? `Scout is finding 6 more moments…`
+                  : `${order.length} moments found`}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={deleteHistory.length === 0}
+                  onClick={undoDelete}
+                  aria-label="Undo last delete"
+                  className="gap-1.5"
+                >
+                  <Undo2 className="size-3.5" />
+                  Undo
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={order.length === 0}
+                  onClick={deleteActiveMoment}
+                  aria-label="Delete this moment"
+                  className="gap-1.5"
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={p.onCreateVideo}
+                  disabled={p.timelineMoments.length === 0}
+                  className={cn(
+                    "transition-all duration-150 ease-out",
+                    p.timelineMoments.length > 0
+                      ? "bg-indigo-500 text-white hover:bg-indigo-600"
+                      : "cursor-not-allowed bg-muted text-muted-foreground disabled:opacity-100"
+                  )}
+                >
+                  Create video
+                </Button>
+              </div>
+            </div>
+
+            {/* 4. Moment filmstrip — scan results, at the bottom of the column.
+                During re-scan we DON'T reload it. Instead we append 6
+                placeholder thumbs at the end; once Scout finishes, real new
+                moments replace them and the strip auto-scrolls to reveal them. */}
             <ThumbnailStrip
               order={order}
               activeIndex={p.activeIndex}
@@ -326,98 +445,10 @@ function ScoutWorkspace(p: WorkspaceProps) {
               selectedIds={p.selectedIds}
               addMoment={p.addMoment}
               removeMoment={p.removeMoment}
-              loading={reranking}
+              appendingCount={reranking ? 6 : 0}
             />
-
-            {/* 2. Moment name — sits right under the filmstrip */}
-            <div className="shrink-0 px-6 pt-2 text-center">
-              {reranking ? (
-                <Skeleton className="mx-auto h-5 w-64" />
-              ) : (
-                <>
-                  <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Preview · Moment {order.indexOf(p.activeIndex) + 1}
-                  </p>
-                  <h2 className="text-base font-semibold leading-snug text-foreground">
-                    {p.selected.title}
-                  </h2>
-                </>
-              )}
-            </div>
-
-            {/* 3. Large selected moment preview — top-aligned, close to the name */}
-            <div className="flex min-h-0 flex-1 items-start justify-center px-6 pb-3 pt-2">
-              {reranking ? (
-                <Skeleton className="aspect-video w-full max-w-[560px] rounded-2xl" />
-              ) : (
-                <MomentPreview moment={p.selected} />
-              )}
-            </div>
           </div>
 
-          {/* Right main column — Why this moment? (signal chips + full-height cards) */}
-          <aside className="flex w-[35%] shrink-0 flex-col border-l border-[hsl(var(--border-subtle))] bg-transparent">
-            <div className="px-4 pt-4">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Why this moment?
-              </h3>
-            </div>
-
-            <div className="flex flex-1 min-h-0 flex-col px-4 pb-4 pt-3">
-              {/* Signal chips */}
-              {reranking ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {[64, 80, 56, 52, 88].map((w, i) => (
-                    <Skeleton
-                      key={i}
-                      className="h-5 rounded-full"
-                      style={{ width: w }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {stats.map((s) => (
-                    <span
-                      key={s.label}
-                      className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5"
-                    >
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {s.label}
-                      </span>
-                      <span className="text-xs font-semibold tabular-nums text-foreground">
-                        {s.value}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Compact cards — fit within the panel (scroll if very short) */}
-              {reranking ? (
-                <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-                  <Skeleton className="min-h-0 flex-1 rounded-lg" />
-                  <Skeleton className="min-h-0 flex-1 rounded-lg" />
-                  <Skeleton className="min-h-0 flex-1 rounded-lg" />
-                </div>
-              ) : (
-                <div
-                  key={p.selected.id}
-                  className="mt-3 flex min-h-0 flex-1 flex-col gap-3"
-                >
-                  <WhyCard text="Chat activity spiked here">
-                    <SpikeBars data={p.selected.chatVelocity} />
-                  </WhyCard>
-                  <WhyCard text="Creator reaction is clear">
-                    <ReactionMeter moment={p.selected} />
-                  </WhyCard>
-                  <WhyCard text="Strong first 3 seconds">
-                    <RiseCurve data={p.selected.viewerDelta} />
-                  </WhyCard>
-                </div>
-              )}
-            </div>
-          </aside>
         </div>
 
       </div>
@@ -469,19 +500,29 @@ function ScoutWorkspace(p: WorkspaceProps) {
           </ul>
         </ScrollArea>
 
-        {/* Sticky bottom composer */}
-        <div className="px-4 pt-3 pb-3">
+        {/* Sticky bottom composer — pb-6 matches the preview column's pb-6
+            so the chat field lines up horizontally with the filmstrip below. */}
+        <div className="px-4 pt-3 pb-6">
           <div className="flex flex-wrap gap-1.5">
-            {SCOUT_REFINE_CHIPS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setQuery(c)}
-                className="rounded-full border border-border bg-background px-2.5 py-1 text-sm text-foreground transition-colors duration-150 hover:border-foreground/30 hover:bg-accent hover:text-foreground"
-              >
-                {c}
-              </button>
-            ))}
+            {SCOUT_REFINE_CHIPS.map((c) => {
+              const on = query === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setQuery(on ? "" : c)}
+                  aria-pressed={on}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs transition-all duration-150 ease-out",
+                    on
+                      ? "border-indigo-500 bg-indigo-500/10 font-medium text-indigo-500"
+                      : "border-border text-muted-foreground hover:border-indigo-500/40 hover:text-foreground"
+                  )}
+                >
+                  {c}
+                </button>
+              );
+            })}
           </div>
 
           <Card className="relative mt-4 border-none bg-[hsl(var(--surface-sunken))] p-3">
@@ -494,37 +535,47 @@ function ScoutWorkspace(p: WorkspaceProps) {
                   submitQuery();
                 }
               }}
-              placeholder="Ask Scout to find different moments…"
+              placeholder="Ask Scout to find new moments..."
               rows={2}
-              className="min-h-[60px] resize-none border-0 bg-transparent pr-10 text-sm shadow-none focus-visible:ring-0"
+              className="min-h-[60px] resize-none border-0 bg-transparent pr-20 text-sm shadow-none focus-visible:ring-0"
             />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  disabled={!query.trim()}
-                  onClick={() => setQuery(enhanceQuery(query))}
-                  aria-label="Enhance prompt"
-                  className="absolute bottom-2 right-2 text-violet-500 transition-all duration-150 ease-out hover:bg-violet-50 hover:text-violet-500"
-                >
-                  <Sparkles className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Enhance prompt</TooltipContent>
-            </Tooltip>
+            {/* Enhance + Send icon buttons, grouped bottom-right */}
+            <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={!query.trim()}
+                    onClick={() => setQuery(enhanceQuery(query))}
+                    aria-label="Enhance prompt"
+                    className="text-violet-500 transition-all duration-150 ease-out hover:bg-violet-50 hover:text-violet-500"
+                  >
+                    <Sparkles className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Enhance prompt</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    disabled={reranking || !query.trim()}
+                    onClick={submitQuery}
+                    aria-label="Send"
+                    className="bg-indigo-500 text-white shadow-sm transition-all duration-150 ease-out hover:bg-indigo-600 disabled:bg-muted disabled:text-muted-foreground"
+                  >
+                    <ArrowUp className="size-4" strokeWidth={2.5} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {reranking ? "Finding moments…" : "Send"}
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </Card>
-
-          <Button
-            variant="outline"
-            size="lg"
-            className="mt-3 w-full gap-1.5 border-border text-foreground hover:bg-muted"
-            onClick={submitQuery}
-            disabled={reranking}
-          >
-            {reranking ? "Finding moments…" : "Find new moments"}
-          </Button>
         </div>
       </aside>
     </>
@@ -722,7 +773,7 @@ function MomentPreview({ moment }: { moment: Moment }) {
   const cropPos = CROP_POSITION[moment.crop ?? "center"];
   return (
     <div
-      className="relative aspect-video w-full max-w-[560px] overflow-hidden rounded-2xl border border-border bg-black shadow-lg"
+      className="relative aspect-video w-full max-h-[50vh] max-w-[640px] overflow-hidden rounded-2xl border border-border bg-black shadow-lg"
       style={moment.videoUrl ? undefined : { background: thumbGradient(moment.id) }}
     >
       {moment.videoUrl && (
@@ -756,20 +807,357 @@ function MomentPreview({ moment }: { moment: Moment }) {
         )}
         style={{ boxShadow: "0 0 0 9999px rgba(0,0,0,0.5)" }}
       >
-        <span className="absolute left-1/2 top-1.5 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-violet-500/90 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white shadow-sm backdrop-blur-sm">
+        <span className="absolute left-1/2 top-1.5 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-indigo-500 bg-white px-3 py-1 text-xs font-medium text-indigo-500 shadow-sm">
           <Sparkles className="size-3" />
           AI suggested crop
         </span>
       </div>
 
-      {/* Source metadata — duration + game as separate pills, above the dim */}
+      {/* Duration pill — stays inside the preview. Game tag removed. */}
       <span className="absolute bottom-2 left-2 z-10 rounded bg-black/40 px-2 py-1 text-xs font-medium uppercase tracking-wider tabular-nums text-white/80 backdrop-blur-sm">
         {moment.duration}
       </span>
-      <span className="absolute bottom-2 right-2 z-10 rounded bg-black/40 px-2 py-1 text-xs font-medium uppercase tracking-wider text-white/80 backdrop-blur-sm">
-        {moment.game}
-      </span>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+//  MOMENT ANNOTATION TRACK — represents ONLY the selected moment (not the
+//  full assembly timeline). Three stacked visual layers:
+//    1) Video track:    playback controls + time-ruler over the moment's
+//                       duration, with a red playhead.
+//    2) Audio waveform: subtle zig-zag drawn from moment.audioWaveform.
+//    3) AI annotations: pill labels (emoji + text) pinned to exact
+//                       timestamps — Strong hook (0–3s range), Chat spike
+//                       (chat peak), Creator reaction (audio peak).
+//  Timings derive from the moment's own signal arrays so markers shift as
+//  the selected moment changes. Visual / mocked only.
+// ---------------------------------------------------------------------------
+type MomentAnnotations = {
+  hookEnd: number;
+  chatSec: number;
+  reactSec: number;
+};
+
+function annotationsFor(m: Moment): MomentAnnotations {
+  const duration = Math.max(1, clockToSeconds(m.duration));
+  const peakSec = (data: number[]) => {
+    const idx = data.indexOf(Math.max(...data));
+    return (idx / Math.max(1, data.length - 1)) * duration;
+  };
+  const hookEnd = Math.min(3, duration * 0.25);
+  const rawChat = peakSec(m.chatVelocity);
+  const rawReact = peakSec(m.audioWaveform);
+  // Keep markers visually separated so pills don't overlap each other.
+  const minGap = duration * 0.15;
+  const chatSec = Math.min(
+    duration - minGap,
+    Math.max(hookEnd + minGap, rawChat)
+  );
+  const reactSec = Math.min(
+    duration - minGap / 2,
+    Math.max(chatSec + minGap, rawReact)
+  );
+  return { hookEnd, chatSec, reactSec };
+}
+
+function formatMS(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function MomentAnnotationTrack({ moment }: { moment: Moment }) {
+  const duration = clockToSeconds(moment.duration);
+
+  // Mock playhead — loops continuously from 0 → 1 over the moment's duration,
+  // mirroring the auto-playing/looping <video> in MomentPreview. The Play
+  // button pauses/resumes the playhead; Skip jumps ±10%.
+  const [playing, setPlaying] = useState(true);
+  const [position, setPosition] = useState(0);
+
+  // Reset on moment change.
+  useEffect(() => {
+    setPosition(0);
+    setPlaying(true);
+  }, [moment.id]);
+
+  // Advance position on a fixed tick while playing.
+  useEffect(() => {
+    if (!playing || duration <= 0) return;
+    const stepMs = 80;
+    const totalMs = duration * 1000;
+    const id = setInterval(() => {
+      setPosition((p) => {
+        const next = p + stepMs / totalMs;
+        return next >= 1 ? 0 : next;
+      });
+    }, stepMs);
+    return () => clearInterval(id);
+  }, [playing, duration]);
+
+  if (duration <= 0) return null;
+
+  const { hookEnd, chatSec, reactSec } = annotationsFor(moment);
+  const pct = (s: number) => Math.max(0, Math.min(100, (s / duration) * 100));
+  const playheadPct = position * 100;
+
+  // Range overlays: chat spike spans 1.5 s; creator reaction spans 2 s
+  // (centered on each peak). Clamped to the moment's bounds.
+  const CHAT_RANGE = 1.5;
+  const REACT_RANGE = 2;
+  const chatStart = Math.max(0, chatSec - CHAT_RANGE / 2);
+  const chatEnd = Math.min(duration, chatSec + CHAT_RANGE / 2);
+  const reactStart = Math.max(0, reactSec - REACT_RANGE / 2);
+  const reactEnd = Math.min(duration, reactSec + REACT_RANGE / 2);
+
+  // Time ruler: major ticks every 3 s (labelled), minor ticks every 1 s
+  // (small dashes, no label) for sub-tick density. No trailing duration
+  // tick — sticks strictly to multiples of 3.
+  const majorTicks: number[] = [];
+  for (let t = 0; t <= duration; t += 3) majorTicks.push(t);
+  const minorTicks: number[] = [];
+  for (let t = 1; t <= duration; t += 1) {
+    if (t % 3 !== 0) minorTicks.push(t);
+  }
+
+  // Asymmetric waveform — generate independent top and bottom amplitudes per
+  // bar so the wave reads like a real audio signal (not symmetric around
+  // baseline). Interpolated from the 15-ish source samples to 80 bars.
+  const baseWf = moment.audioWaveform;
+  const TARGET_BARS = 80;
+  const wf = Array.from({ length: TARGET_BARS }, (_, i) => {
+    const srcIdx = (i / (TARGET_BARS - 1)) * Math.max(1, baseWf.length - 1);
+    const lo = Math.floor(srcIdx);
+    const hi = Math.min(baseWf.length - 1, Math.ceil(srcIdx));
+    const t = srcIdx - lo;
+    const base = baseWf[lo] * (1 - t) + baseWf[hi] * t;
+    const topVar = Math.abs(Math.sin(i * 0.9) + Math.sin(i * 2.3) * 0.5) * 0.55;
+    const botVar = Math.abs(Math.cos(i * 0.7) + Math.sin(i * 1.7) * 0.5) * 0.55;
+    return {
+      top: Math.max(0.06, Math.min(1, base * (0.35 + topVar))),
+      bot: Math.max(0.06, Math.min(1, base * (0.35 + botVar))),
+    };
+  });
+
+  return (
+    <div
+      className="w-full overflow-hidden rounded-md border border-border bg-background"
+      aria-label="Annotated moment track"
+    >
+      <div className="flex items-stretch">
+        {/* Playback controls — span BOTH layers vertically on the left, so
+            the time ruler and audio waveform both start at the same x. */}
+        <div className="flex shrink-0 items-center gap-0.5 border-r border-border bg-muted/40 px-2">
+          <button
+            type="button"
+            aria-label="Volume"
+            className="flex size-6 items-center justify-center rounded text-foreground/70 transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
+          >
+            <Volume2 className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Rewind 10%"
+            onClick={() => setPosition((p) => Math.max(0, p - 0.1))}
+            className="flex size-6 items-center justify-center rounded text-foreground/70 transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
+          >
+            <SkipBack className="size-3.5" fill="currentColor" />
+          </button>
+          <button
+            type="button"
+            aria-label={playing ? "Pause" : "Play"}
+            aria-pressed={playing}
+            onClick={() => setPlaying((p) => !p)}
+            className="flex size-6 items-center justify-center rounded text-foreground/70 transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
+          >
+            {playing ? (
+              <Pause className="size-3.5" fill="currentColor" />
+            ) : (
+              <Play
+                className="size-3.5 translate-x-px"
+                fill="currentColor"
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            aria-label="Forward 10%"
+            onClick={() => setPosition((p) => Math.min(1, p + 0.1))}
+            className="flex size-6 items-center justify-center rounded text-foreground/70 transition-colors duration-150 hover:bg-foreground/10 hover:text-foreground"
+          >
+            <SkipForward className="size-3.5" fill="currentColor" />
+          </button>
+        </div>
+
+        {/* Right side: time ruler on top + waveform layer below + playhead. */}
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {/* LAYER 1 — Time ruler. Major ticks (with labels) at multiples of
+              3 s; minor 1-s tick dashes fill the in-between space. */}
+          <div className="relative h-9 border-b border-border bg-muted/40">
+            {minorTicks.map((t) => (
+              <span
+                key={`min-${t}`}
+                aria-hidden
+                className="absolute bottom-0 h-1 w-px bg-foreground/25"
+                style={{ left: `${pct(t)}%` }}
+              />
+            ))}
+            {majorTicks.map((t, i) => {
+              const left = pct(t);
+              const isFirst = i === 0;
+              const isLast = i === majorTicks.length - 1;
+              return (
+                <Fragment key={`maj-${t}`}>
+                  <span
+                    aria-hidden
+                    className="absolute bottom-0 h-2 w-px bg-foreground/45"
+                    style={{ left: `${left}%` }}
+                  />
+                  <span
+                    aria-hidden
+                    className="absolute top-1.5 text-[9px] tabular-nums text-muted-foreground"
+                    style={{
+                      left: isFirst ? "4px" : `${left}%`,
+                      transform: isFirst
+                        ? "none"
+                        : isLast
+                        ? "translateX(-100%)"
+                        : "translateX(-50%)",
+                    }}
+                  >
+                    {formatMS(t)}
+                  </span>
+                </Fragment>
+              );
+            })}
+          </div>
+
+          {/* LAYER 2 — Audio waveform with AI annotation overlays + pills. */}
+          <div className="relative h-[64px] overflow-hidden bg-background">
+            {/* Range overlays (subtle bg bands behind the waveform) */}
+            <div
+              aria-hidden
+              className="absolute inset-y-0 bg-amber-200/45"
+              style={{ left: "0%", width: `${pct(hookEnd)}%` }}
+            />
+            <div
+              aria-hidden
+              className="absolute inset-y-0 bg-blue-200/45"
+              style={{
+                left: `${pct(chatStart)}%`,
+                width: `${pct(chatEnd) - pct(chatStart)}%`,
+              }}
+            />
+            <div
+              aria-hidden
+              className="absolute inset-y-0 bg-emerald-200/40"
+              style={{
+                left: `${pct(reactStart)}%`,
+                width: `${pct(reactEnd) - pct(reactStart)}%`,
+              }}
+            />
+
+            {/* Asymmetric waveform bars */}
+            <svg
+              viewBox="0 0 100 40"
+              preserveAspectRatio="none"
+              className="absolute inset-0 h-full w-full"
+              aria-hidden
+            >
+              {wf.map((v, i) => {
+                const x = ((i + 0.5) / wf.length) * 100;
+                const tH = Math.max(1.6, v.top * 18);
+                const bH = Math.max(1.6, v.bot * 18);
+                return (
+                  <line
+                    key={i}
+                    x1={x}
+                    y1={20 - tH}
+                    x2={x}
+                    y2={20 + bH}
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    className="text-zinc-500"
+                  />
+                );
+              })}
+            </svg>
+
+            {/* Annotation pills */}
+            <AnnotationPill
+              emoji="⚡"
+              label="Strong hook"
+              left={pct(hookEnd / 2)}
+              tone="amber"
+            />
+            <AnnotationPill
+              emoji="💬"
+              label="Chat spike"
+              left={pct(chatSec)}
+              tone="blue"
+            />
+            <AnnotationPill
+              emoji="😊"
+              label="Creator reaction"
+              left={pct(reactSec)}
+              tone="emerald"
+            />
+          </div>
+
+          {/* Red playhead — spans both the time ruler and the waveform layer.
+              `left` is relative to this right-side container, so it stays
+              aligned with the timestamps + waveform (not the controls). */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-red-500"
+            style={{ left: `${playheadPct}%`, transform: "translateX(-50%)" }}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-0 z-30 size-2 rotate-45 bg-red-500"
+            style={{
+              left: `${playheadPct}%`,
+              transform: "translateX(-50%) translateY(-25%) rotate(45deg)",
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Small annotation pill (emoji + label) pinned to a specific timestamp.
+// Tone matches the range overlay color in the waveform layer.
+function AnnotationPill({
+  emoji,
+  label,
+  left,
+  tone = "amber",
+}: {
+  emoji: string;
+  label: string;
+  left: number;
+  tone?: "amber" | "blue" | "emerald";
+}) {
+  const toneClass = {
+    amber: "border-amber-300/70 bg-amber-100/95 text-amber-950",
+    blue: "border-blue-300/70 bg-blue-100/95 text-blue-950",
+    emerald: "border-emerald-300/70 bg-emerald-100/95 text-emerald-950",
+  }[tone];
+  return (
+    <span
+      className={cn(
+        "absolute top-2 z-10 flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        toneClass
+      )}
+      style={{ left: `${left}%`, transform: "translateX(-50%)" }}
+    >
+      <span className="leading-none">{emoji}</span>
+      <span className="leading-tight">{label}</span>
+    </span>
   );
 }
 
@@ -783,7 +1171,7 @@ function ThumbnailStrip({
   selectedIds,
   addMoment,
   removeMoment,
-  loading = false,
+  appendingCount = 0,
 }: {
   order: number[];
   activeIndex: number;
@@ -791,11 +1179,16 @@ function ThumbnailStrip({
   selectedIds: string[];
   addMoment: (id: string) => void;
   removeMoment: (id: string) => void;
-  loading?: boolean;
+  /**
+   * When > 0, render this many skeleton thumbnails AT THE END of the strip
+   * to communicate "Scout is adding more moments". Real thumbs stay visible.
+   */
+  appendingCount?: number;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
+  const prevLenRef = useRef(order.length);
 
   const updateOverflow = () => {
     const el = scrollerRef.current;
@@ -816,20 +1209,22 @@ function ThumbnailStrip({
     };
   }, [order]);
 
+  // When new moments are appended (order length grows), smoothly scroll to
+  // reveal the first newly-added one near the left edge of the viewport.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (order.length > prevLenRef.current) {
+      const THUMB_WIDTH = 150;
+      const GAP = 10; // gap-2.5
+      const targetLeft = prevLenRef.current * (THUMB_WIDTH + GAP);
+      el.scrollTo({ left: targetLeft, behavior: "smooth" });
+    }
+    prevLenRef.current = order.length;
+  }, [order.length]);
+
   const scrollByDir = (dir: number) =>
     scrollerRef.current?.scrollBy({ left: dir * 280, behavior: "smooth" });
-
-  if (loading) {
-    return (
-      <div className="shrink-0 px-6 pt-2">
-        <div className="flex gap-2.5 overflow-hidden">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="aspect-video w-[150px] shrink-0 rounded-md" />
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="relative shrink-0 px-6 pt-2">
@@ -854,7 +1249,7 @@ function ThumbnailStrip({
           const inVideo = selectedIds.includes(m.id);
           return (
             <div
-              key={m.id}
+              key={`${m.id}-${pos}`}
               role="button"
               tabIndex={0}
               onClick={() => onChangeIndex(idx)}
@@ -918,6 +1313,14 @@ function ThumbnailStrip({
             </div>
           );
         })}
+        {/* Placeholder thumbs at the end while Scout is finding more moments */}
+        {appendingCount > 0 &&
+          Array.from({ length: appendingCount }).map((_, i) => (
+            <Skeleton
+              key={`appending-${i}`}
+              className="aspect-video w-[150px] shrink-0 rounded-lg"
+            />
+          ))}
       </div>
 
       {canRight && (
@@ -1346,8 +1749,13 @@ function EditorWorkspace({
   const [applied, setApplied] = useState<Record<string, boolean>>({
     deadair: true,
   });
+  // Tools intentionally excluded from the "applied" (green/done) badge —
+  // we want the user to keep going back to these to iterate, not see them
+  // as finished after one tweak.
+  const NEVER_MARK_APPLIED = new Set(["hook", "caption", "broll"]);
   const markApplied = (id: string | null) => {
-    if (id) setApplied((a) => ({ ...a, [id]: true }));
+    if (!id || NEVER_MARK_APPLIED.has(id)) return;
+    setApplied((a) => ({ ...a, [id]: true }));
   };
   const [versions, setVersions] = useState<VersionEntry[]>(INITIAL_VERSIONS);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
@@ -1457,79 +1865,6 @@ function EditorWorkspace({
 
   return (
     <>
-      {/* LEFT — chat-style command thread (continues from Scout) */}
-      <aside className="flex w-[320px] shrink-0 flex-col border-r border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-panel))]">
-        <div className="px-4 pt-4">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Editor</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            Refine your short-form video.
-          </p>
-        </div>
-
-        {/* Chat thread */}
-        <ScrollArea className="flex-1 min-h-0">
-          <ul className="flex flex-col space-y-4 px-4 pb-3 pt-6">
-            <ChatBubble
-              role="ai"
-              text={`I stitched ${timelineMoments.length} ${
-                timelineMoments.length === 1 ? "moment" : "moments"
-              } into your short-form video. Tell me what to change.`}
-            />
-            {thread.map((m) => (
-              <ChatBubble key={m.id} role={m.role} text={m.text} />
-            ))}
-          </ul>
-        </ScrollArea>
-
-        {/* Sticky bottom composer */}
-        <div className="px-4 pt-3 pb-3">
-          <div className="flex flex-wrap gap-1.5">
-            {EDITOR_PROMPTS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setQuery(s)}
-                className="rounded-full border border-border bg-background px-2.5 py-1 text-sm text-foreground transition-colors duration-150 hover:border-foreground/30 hover:bg-accent hover:text-foreground"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <Card className="relative mt-4 border-none bg-[hsl(var(--surface-sunken))] p-3">
-            <Textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submitChat();
-                }
-              }}
-              placeholder="Tell the editor what to change…"
-              rows={2}
-              className="min-h-[60px] resize-none border-0 bg-transparent pr-10 text-sm shadow-none focus-visible:ring-0"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  disabled={!query.trim()}
-                  onClick={() => setQuery(enhanceQuery(query))}
-                  aria-label="Enhance prompt"
-                  className="absolute bottom-2 right-2 text-violet-500 transition-all duration-150 ease-out hover:bg-violet-50 hover:text-violet-500"
-                >
-                  <Sparkles className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Enhance prompt</TooltipContent>
-            </Tooltip>
-          </Card>
-        </div>
-      </aside>
-
       {/* WORKING AREA — preview + tools/history, then the wide timeline below */}
       <div className="flex flex-1 min-w-0 flex-col">
         <div className="flex flex-1 min-h-0">
@@ -1722,7 +2057,7 @@ function EditorWorkspace({
         </div>
 
         {/* Wide timeline — spans the workspace like Scout's timeline */}
-        <PhaseContextPanel className="relative py-3">
+        <PhaseContextPanel className="relative pt-3 pb-6">
           {brollToast && (
             <div className="pointer-events-none absolute right-6 top-2 z-10 flex items-center gap-1.5 rounded-full border border-blue-400/40 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground shadow-sm animate-in fade-in-0 slide-in-from-top-1 duration-200">
               <Film className="size-3 text-blue-500" />
@@ -1746,6 +2081,102 @@ function EditorWorkspace({
           />
         </PhaseContextPanel>
       </div>
+
+      {/* RIGHT — chat-style command thread (now on the right, matching Scout) */}
+      <aside className="flex w-[320px] shrink-0 flex-col border-l border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-panel))]">
+        <div className="px-4 pt-4">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Editor</h2>
+        </div>
+
+        {/* Chat thread */}
+        <ScrollArea className="flex-1 min-h-0">
+          <ul className="flex flex-col space-y-4 px-4 pb-3 pt-6">
+            <ChatBubble
+              role="ai"
+              text={`I stitched ${timelineMoments.length} ${
+                timelineMoments.length === 1 ? "moment" : "moments"
+              } into your short-form video. Tell me what to change.`}
+            />
+            {thread.map((m) => (
+              <ChatBubble key={m.id} role={m.role} text={m.text} />
+            ))}
+          </ul>
+        </ScrollArea>
+
+        {/* Sticky bottom composer */}
+        <div className="px-4 pt-3 pb-6">
+          <div className="flex flex-wrap gap-1.5">
+            {EDITOR_PROMPTS.map((s) => {
+              const on = query === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setQuery(on ? "" : s)}
+                  aria-pressed={on}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs transition-all duration-150 ease-out",
+                    on
+                      ? "border-indigo-500 bg-indigo-500/10 font-medium text-indigo-500"
+                      : "border-border text-muted-foreground hover:border-indigo-500/40 hover:text-foreground"
+                  )}
+                >
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+
+          <Card className="relative mt-4 border-none bg-[hsl(var(--surface-sunken))] p-3">
+            <Textarea
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submitChat();
+                }
+              }}
+              placeholder="Refine your short-form video..."
+              rows={2}
+              className="min-h-[60px] resize-none border-0 bg-transparent pr-20 text-sm shadow-none focus-visible:ring-0"
+            />
+            <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={!query.trim()}
+                    onClick={() => setQuery(enhanceQuery(query))}
+                    aria-label="Enhance prompt"
+                    className="text-violet-500 transition-all duration-150 ease-out hover:bg-violet-50 hover:text-violet-500"
+                  >
+                    <Sparkles className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Enhance prompt</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    disabled={!query.trim()}
+                    onClick={submitChat}
+                    aria-label="Send"
+                    className="bg-indigo-500 text-white shadow-sm transition-all duration-150 ease-out hover:bg-indigo-600 disabled:bg-muted disabled:text-muted-foreground"
+                  >
+                    <ArrowUp className="size-4" strokeWidth={2.5} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Send</TooltipContent>
+              </Tooltip>
+            </div>
+          </Card>
+        </div>
+      </aside>
     </>
   );
 }
@@ -2343,8 +2774,74 @@ function ExportWorkspace({
 
   return (
     <>
-      {/* LEFT PANEL — calm, tinted so the previews read as the canvas */}
-      <aside className="flex w-[320px] shrink-0 flex-col border-r border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-panel))]">
+      {/* WORKING AREA on the LEFT — preview cards. Padding mirrors Scout's
+          column (pt-5 pb-6 px-[30px]) so spacing reads consistently across phases. */}
+      <div className="flex flex-1 min-w-0 flex-col gap-3 px-[30px] pt-5 pb-6">
+        {/* Add removed platforms back — only shown when some are removed */}
+        {inactivePlatforms.length > 0 && (
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {inactivePlatforms.map((pf) => (
+              <button
+                key={pf.id}
+                type="button"
+                onClick={() => addPlatform(pf.id)}
+                className="flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-foreground/40 hover:bg-accent hover:text-foreground"
+              >
+                <Plus className="size-3.5" />
+                {pf.preview}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Multi-platform previews — fill the panel.
+            items-center vertically balances the cards in the available height;
+            cards are flex-1 (capped) so they fill the row width edge-to-edge. */}
+        {activePlatforms.length > 0 ? (
+          <div className="flex flex-1 min-h-0 items-center justify-center gap-3">
+            {activePlatforms.map((pf) => (
+              <PlatformPreview
+                key={pf.id}
+                label={pf.preview}
+                handle={pf.handle}
+                moment={selected}
+                state={previews[pf.id]}
+                connected={connected[pf.id]}
+                status={status[pf.id]}
+                onToggleSafe={() =>
+                  setPreviews((p) => ({
+                    ...p,
+                    [pf.id]: { ...p[pf.id], safe: !p[pf.id].safe },
+                  }))
+                }
+                onToggleCaptions={() =>
+                  setPreviews((p) => ({
+                    ...p,
+                    [pf.id]: { ...p[pf.id], captions: !p[pf.id].captions },
+                  }))
+                }
+                onExpand={() => setExpanded(pf.id)}
+                onConnect={() => connectPlatform(pf.id)}
+                onPublish={() => publishPlatform(pf.id)}
+                onSchedule={() => schedulePlatform(pf.id)}
+                onRemove={() => removePlatform(pf.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
+            <p className="text-sm text-muted-foreground">
+              No platforms selected.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Add one above to preview and publish.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT PANEL — Export controls (moved from the left to match Scout / Editor) */}
+      <aside className="flex w-[320px] shrink-0 flex-col border-l border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-panel))]">
         <header className="px-4 pt-4">
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Export</h2>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
@@ -2439,69 +2936,6 @@ function ExportWorkspace({
           </div>
         </ScrollArea>
       </aside>
-
-      {/* WORKING AREA — each platform preview carries its own publish controls */}
-      <div className="flex flex-1 min-w-0 flex-col gap-3 px-4 py-3">
-        {/* Add removed platforms back — only shown when some are removed */}
-        {inactivePlatforms.length > 0 && (
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {inactivePlatforms.map((pf) => (
-              <button
-                key={pf.id}
-                type="button"
-                onClick={() => addPlatform(pf.id)}
-                className="flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:border-foreground/40 hover:bg-accent hover:text-foreground"
-              >
-                <Plus className="size-3.5" />
-                {pf.preview}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Multi-platform previews — fill the panel */}
-        {activePlatforms.length > 0 ? (
-          <div className="flex flex-1 min-h-0 items-start justify-center gap-3">
-            {activePlatforms.map((pf) => (
-              <PlatformPreview
-                key={pf.id}
-                label={pf.preview}
-                handle={pf.handle}
-                moment={selected}
-                state={previews[pf.id]}
-                connected={connected[pf.id]}
-                status={status[pf.id]}
-                onToggleSafe={() =>
-                  setPreviews((p) => ({
-                    ...p,
-                    [pf.id]: { ...p[pf.id], safe: !p[pf.id].safe },
-                  }))
-                }
-                onToggleCaptions={() =>
-                  setPreviews((p) => ({
-                    ...p,
-                    [pf.id]: { ...p[pf.id], captions: !p[pf.id].captions },
-                  }))
-                }
-                onExpand={() => setExpanded(pf.id)}
-                onConnect={() => connectPlatform(pf.id)}
-                onPublish={() => publishPlatform(pf.id)}
-                onSchedule={() => schedulePlatform(pf.id)}
-                onRemove={() => removePlatform(pf.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
-            <p className="text-sm text-muted-foreground">
-              No platforms selected.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Add one above to preview and publish.
-            </p>
-          </div>
-        )}
-      </div>
 
       {/* Expanded preview */}
       {expandedPlatform && (
@@ -2654,7 +3088,7 @@ function PlatformPreview({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex w-[min(calc((100vw_-_460px)/3),calc((100vh_-_300px)*9/16))] flex-col">
+    <div className="flex min-w-0 max-w-[min(340px,calc((100vh-260px)*9/16))] flex-1 flex-col">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
         <div className="flex items-center gap-0.5">
@@ -2774,6 +3208,19 @@ function PlatformPreview({
             Connect
           </button>
         )}
+
+        {/* Download — always available regardless of publish/connect state.
+            Secondary (outline) styling so Publish stays the primary action. */}
+        <button
+          type="button"
+          onClick={() => {
+            // Mock: real implementation would trigger a file download.
+          }}
+          className="flex items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5 text-[11px] font-medium text-foreground transition-colors duration-150 hover:bg-accent"
+        >
+          <Download className="size-3.5" />
+          Download MP4
+        </button>
       </div>
     </div>
   );

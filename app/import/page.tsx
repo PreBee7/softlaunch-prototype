@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Check,
   FileVideo,
+  Folder,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScoutSkeleton } from "@/components/ScoutSkeleton";
 import {
   recentRecordings,
+  recentVideos,
   intentPresets,
   intentPrompts,
   promptEnhancements,
@@ -178,7 +180,8 @@ export default function ImportPage() {
       : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-6 pt-12 pb-16">
+    <div className="flex w-full flex-1 items-center justify-center overflow-y-auto px-6 py-12">
+      <div className="w-full max-w-3xl space-y-6">
       <h1 className="mb-10 text-center text-4xl font-bold tracking-tight text-foreground">
         Your stream, ready to post.
       </h1>
@@ -387,9 +390,116 @@ export default function ImportPage() {
         </Button>
       </div>
 
+      {/* Recent videos rail — short-form videos already made in SoftLaunch.
+          Same shape as the old "Recent recordings" rail, but each tile is a
+          9:16 portrait clip carrying the platforms it was exported to and
+          its status (draft / scheduled / published). */}
+      <section className="space-y-3 pt-10">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Recent videos
+          </h2>
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground hover:underline"
+          >
+            <Folder className="size-3.5" />
+            Browse all
+          </button>
+        </div>
+        <Separator className="bg-border/40" />
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {recentVideos.map((v) => (
+            <Card
+              key={v.id}
+              role="button"
+              tabIndex={0}
+              className="group cursor-pointer gap-0 overflow-hidden p-0 transition-all duration-200 ease-out hover:shadow-md hover:ring-2 hover:ring-indigo-500/30"
+            >
+              <div
+                className="relative aspect-[9/16] w-full overflow-hidden bg-black"
+                style={!v.videoUrl ? { background: thumbGradient(v.id) } : undefined}
+              >
+                {v.videoUrl && (
+                  <video
+                    src={v.videoUrl}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                )}
+
+                {/* Legibility overlay so the duration + status pills read on any frame */}
+                <div
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/0 to-black/30"
+                  aria-hidden
+                />
+
+                {/* Status pill — top-left, color-coded */}
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "absolute left-1.5 top-1.5 border-transparent text-[10px] font-medium uppercase tracking-wider backdrop-blur-sm",
+                    v.status === "published" &&
+                      "bg-emerald-500/85 text-white",
+                    v.status === "scheduled" &&
+                      "bg-amber-500/85 text-white",
+                    v.status === "draft" && "bg-black/55 text-white/85"
+                  )}
+                >
+                  {v.status}
+                </Badge>
+
+                {/* Duration — bottom-right, tabular */}
+                <Badge
+                  variant="secondary"
+                  className="absolute bottom-1.5 right-1.5 border-transparent bg-black/60 tabular-nums text-white backdrop-blur-sm"
+                >
+                  {v.duration}
+                </Badge>
+
+                {/* Hover play affordance */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur">
+                    <Play
+                      className="size-4 translate-x-px"
+                      fill="currentColor"
+                    />
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1 p-2.5">
+                <h3 className="truncate text-sm font-medium leading-snug">
+                  {v.title}
+                </h3>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="size-3 shrink-0" />
+                  <span className="truncate">{v.createdAt}</span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {v.platforms.map((p) => (
+                    <span
+                      key={p}
+                      className="rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                    >
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </section>
+
       {/* Upload popup — Upload tab + Recent tab */}
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="p-6 sm:max-w-2xl">
           <DialogTitle className="sr-only">Add a video</DialogTitle>
           <Tabs defaultValue="upload" className="gap-4 pt-6">
             <TabsList className="w-full">
@@ -442,7 +552,7 @@ export default function ImportPage() {
             </TabsContent>
 
             <TabsContent value="recent">
-              <div className="grid max-h-[60vh] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3">
+              <div className="grid max-h-[60vh] grid-cols-2 gap-3 overflow-y-auto p-1 sm:grid-cols-3">
                 {recentRecordings.map((r) => (
                   <Card
                     key={r.id}
@@ -526,6 +636,7 @@ export default function ImportPage() {
           </Tabs>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
