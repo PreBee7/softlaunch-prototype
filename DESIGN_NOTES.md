@@ -1,5 +1,23 @@
 # Design Notes
 
+## Scout — removed assembly timeline; Create video moved to preview header
+
+- Screen changed: Scout only (`app/scout/page.tsx`). Import/Editor/Export, routing, and visual style untouched.
+- Removed the bottom assembly timeline area entirely from Scout: the "Your video · N moments" header, the empty dashed timeline box, the "No moments yet — add moments…" empty state, and the bottom-bar Create video CTA tied to that timeline (the `PhaseContextPanel` block in `ScoutWorkspace`). `PhaseContextPanel` and `MomentTimeline` are still defined/imported in this file because Editor uses them — only Scout's instance was removed.
+- Relocated the "Create video" button to the top-right of the main preview section, on the same row as the scan label ("Scan N · 6 moments found"). Still gated on `timelineMoments.length > 0`, still routes to Editor via the existing `onCreateVideo` handler.
+- Mock state unchanged — `selectedIds` / `addMoment` / `removeMoment` still drive the filmstrip "+" affordance, so users can add/remove moments from the strip; the green-check thumbnail state still shows what's added.
+- Rationale: Scout focuses on reviewing AI-found moments; the full video assembly timeline belongs in Editor.
+
+## LeftRail — phase icons restored inside step nodes
+
+- Component changed: `components/LeftRail.tsx` only.
+- Brought back the phase-specific icons (Compass / SquarePen / Share2) inside the indicator circles. All three indicator states keep their styling — only the inner glyph changed:
+  - **Completed** — outlined indigo circle with the phase icon in indigo.
+  - **Current** — filled indigo circle with the phase icon in white, soft indigo ring.
+  - **Upcoming** — outlined muted circle with the phase icon muted; button still `disabled`.
+- Circle size nudged 20 → 28 px to seat a 14 px icon comfortably. Connector line, even-distribution layout, and optional `errors` prop unchanged.
+- The check icon used previously for "completed" is replaced by the phase icon — circle styling alone now communicates state, while the icon communicates which phase it is.
+
 ## Scout — chat panel moved to the right
 
 - Screen changed: Scout only (`app/scout/page.tsx`).

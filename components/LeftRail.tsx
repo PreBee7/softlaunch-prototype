@@ -1,15 +1,21 @@
 "use client";
 
 import { Fragment } from "react";
-import { Check, AlertTriangle } from "lucide-react";
+import {
+  Compass,
+  SquarePen,
+  Share2,
+  AlertTriangle,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type Phase = "scout" | "editor" | "export";
 
-const steps: { id: Phase; label: string }[] = [
-  { id: "scout", label: "Scout" },
-  { id: "editor", label: "Editor" },
-  { id: "export", label: "Export" },
+const steps: { id: Phase; label: string; icon: LucideIcon }[] = [
+  { id: "scout", label: "Scout", icon: Compass },
+  { id: "editor", label: "Editor", icon: SquarePen },
+  { id: "export", label: "Export", icon: Share2 },
 ];
 
 type Props = {
@@ -43,6 +49,7 @@ export function LeftRail({ active, onChange, errors }: Props) {
           const isUpcoming = i > activeIdx;
           const error = errors?.[s.id];
           const isLast = i === steps.length - 1;
+          const Icon = s.icon;
           return (
             <Fragment key={s.id}>
               <li className="flex flex-col items-center">
@@ -67,15 +74,16 @@ export function LeftRail({ active, onChange, errors }: Props) {
                   <span
                     aria-hidden
                     className={cn(
-                      "flex size-5 items-center justify-center rounded-full transition-colors duration-150",
+                      "flex size-7 items-center justify-center rounded-full transition-colors duration-150",
                       isComplete &&
                         "border border-indigo-500 bg-background text-indigo-500",
                       isActive &&
-                        "bg-indigo-500 ring-2 ring-indigo-500/20",
-                      isUpcoming && "border border-border bg-background"
+                        "bg-indigo-500 text-white ring-2 ring-indigo-500/20",
+                      isUpcoming &&
+                        "border border-border bg-background text-muted-foreground"
                     )}
                   >
-                    {isComplete && <Check className="size-3" strokeWidth={3} />}
+                    <Icon className="size-3.5" />
                   </span>
                   <span className="text-xs font-medium leading-tight">
                     {s.label}

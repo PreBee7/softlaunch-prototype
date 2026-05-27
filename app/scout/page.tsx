@@ -294,14 +294,28 @@ function ScoutWorkspace(p: WorkspaceProps) {
         <div className="flex flex-1 min-h-0">
           {/* Left main column — scan label · filmstrip · name · preview */}
           <div className="flex w-[65%] min-w-0 flex-col bg-[hsl(var(--surface-canvas))]">
-            {/* Scan label above the filmstrip — always present so the layout
-                below it never shifts between scans. Plain text, not a chip. */}
-            <div className="shrink-0 px-6 pt-3">
+            {/* Scan label (left) + Create video CTA (right). Sits at the top
+                of the main preview section — the assembly timeline that used
+                to host this CTA belongs in Editor, not Scout. */}
+            <div className="flex shrink-0 items-center justify-between gap-3 px-6 pt-3">
               <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {reranking
                   ? "Scanning…"
                   : `${scanLabel} · ${order.length} moments found`}
               </span>
+              <Button
+                size="sm"
+                onClick={p.onCreateVideo}
+                disabled={p.timelineMoments.length === 0}
+                className={cn(
+                  "transition-all duration-150 ease-out",
+                  p.timelineMoments.length > 0
+                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
+                    : "cursor-not-allowed bg-muted text-muted-foreground disabled:opacity-100"
+                )}
+              >
+                Create video
+              </Button>
             </div>
 
             {/* Moment filmstrip selector (top) */}
@@ -406,38 +420,6 @@ function ScoutWorkspace(p: WorkspaceProps) {
           </aside>
         </div>
 
-        {/* Bottom — selected moments timeline + Create video */}
-        <PhaseContextPanel className="border-t border-[hsl(var(--border-subtle))] bg-transparent py-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Your video ·{" "}
-              {p.timelineMoments.length}{" "}
-              {p.timelineMoments.length === 1 ? "moment" : "moments"}
-            </h3>
-            <Button
-              size="lg"
-              onClick={p.onCreateVideo}
-              disabled={p.timelineMoments.length === 0}
-              className={cn(
-                "transition-all duration-150 ease-out",
-                p.timelineMoments.length > 0
-                  ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                  : "cursor-not-allowed bg-muted text-muted-foreground disabled:opacity-100"
-              )}
-            >
-              Create video
-            </Button>
-          </div>
-          <MomentTimeline
-            moments={p.timelineMoments}
-            activeId={p.selected.id}
-            onRemove={p.removeMoment}
-            onSelect={(id) =>
-              p.onChangeIndex(moments.findIndex((m) => m.id === id))
-            }
-            editTracks={["Captions"]}
-          />
-        </PhaseContextPanel>
       </div>
 
       {/* Tools panel — chat-style thread continuing from Import (now on the right) */}
