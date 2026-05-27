@@ -1,5 +1,25 @@
 # Design Notes
 
+## Scout — chat panel moved to the right
+
+- Screen changed: Scout only (`app/scout/page.tsx`).
+- The "Scout moments" chat aside (header + chat thread + refinement chips + composer + "Find new moments" CTA) now sits on the right side of the Scout workspace; preview, "Why this moment?", and the bottom timeline have shifted left to fill the freed space.
+- The aside's separator border flipped from `border-r` → `border-l` to match its new edge.
+- JSX is physically reordered (not CSS `order`) so DOM/tab order matches the visual flow.
+- Routing, LeftRail, preview/filmstrip, "Why this moment?", timeline, and all chat-thread behavior (chips, restore-previous-scan, loading state, re-rank) are unchanged.
+
+## LeftRail — ordered vertical workflow stepper
+
+- Component changed: `components/LeftRail.tsx` only (no page-level edits; routing logic unchanged — `onChange` still drives phase transitions for non-upcoming steps).
+- Restructured into an ordered vertical stepper for Scout → Editor → Export with three indicator states:
+  - **Completed** — outlined indigo circle with a check icon. Clickable, so the user can step back.
+  - **Current** — solid indigo circle (accent), no inner glyph, soft indigo ring.
+  - **Upcoming** — outlined muted circle, no inner glyph. Button is `disabled` so clicks don't fire `onChange` (keeps the guided flow).
+- Connector: a thin vertical line lives in a flex-grow segment between adjacent step rows. With the `ol` set to `flex-1`, the steps distribute evenly across the full sidebar height and adapt to viewport changes.
+- Removed (per spec): padlock icons, "Current"/"Locked" captions, numbered circles, and the phase-specific icons (Compass/SquarePen/Share2). The circle indicator alone communicates state.
+- Layout per step kept: indicator above the label (Scout / Editor / Export). Width 72 → 96 px.
+- New optional `errors?: Partial<Record<Phase, string>>` prop. When a step has an entry, a small warning (AlertTriangle + short message) renders below its label. Nothing is reserved or rendered when there's no error — layout adapts naturally.
+
 ## Checkpoint — Scout baseline before workflow stepper
 
 - Saved current Scout baseline before adding guided workflow navigation.

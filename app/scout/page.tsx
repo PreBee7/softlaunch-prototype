@@ -289,112 +289,6 @@ function ScoutWorkspace(p: WorkspaceProps) {
 
   return (
     <>
-      {/* Tools panel — chat-style thread continuing from Import */}
-      <aside className="flex w-[320px] shrink-0 flex-col border-r border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-panel))]">
-        {/* Header */}
-        <div className="px-4 pt-4">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            Scout moments
-          </h2>
-        </div>
-
-        {/* Chat thread */}
-        <ScrollArea className="flex-1 min-h-0">
-          <ul className="flex flex-col space-y-4 px-4 pb-3 pt-6">
-            {/* Original Import intent + AI's first response */}
-            <ChatBubble
-              role="user"
-              text={
-                p.prompt.trim() ||
-                "Find the most interesting moments in my stream."
-              }
-            />
-            <ChatBubble
-              role="ai"
-              text={`I found ${moments.length} recommended moments.`}
-            />
-            {/* Follow-up turns (incl. loading + restore) */}
-            {thread.map((m) => (
-              <ChatBubble
-                key={m.id}
-                role={m.role}
-                text={m.text}
-                loading={m.loading}
-              >
-                {m.restore && (
-                  <button
-                    type="button"
-                    onClick={() => restoreScan(m.restore!)}
-                    className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
-                  >
-                    <ChevronLeft className="size-3" />
-                    View previous scan
-                  </button>
-                )}
-              </ChatBubble>
-            ))}
-          </ul>
-        </ScrollArea>
-
-        {/* Sticky bottom composer */}
-        <div className="px-4 pt-3 pb-3">
-          <div className="flex flex-wrap gap-1.5">
-            {SCOUT_REFINE_CHIPS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setQuery(c)}
-                className="rounded-full border border-border bg-background px-2.5 py-1 text-sm text-foreground transition-colors duration-150 hover:border-foreground/30 hover:bg-accent hover:text-foreground"
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-
-          <Card className="relative mt-4 border-none bg-[hsl(var(--surface-sunken))] p-3">
-            <Textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submitQuery();
-                }
-              }}
-              placeholder="Ask Scout to find different moments…"
-              rows={2}
-              className="min-h-[60px] resize-none border-0 bg-transparent pr-10 text-sm shadow-none focus-visible:ring-0"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  disabled={!query.trim()}
-                  onClick={() => setQuery(enhanceQuery(query))}
-                  aria-label="Enhance prompt"
-                  className="absolute bottom-2 right-2 text-violet-500 transition-all duration-150 ease-out hover:bg-violet-50 hover:text-violet-500"
-                >
-                  <Sparkles className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Enhance prompt</TooltipContent>
-            </Tooltip>
-          </Card>
-
-          <Button
-            variant="outline"
-            size="lg"
-            className="mt-3 w-full gap-1.5 border-border text-foreground hover:bg-muted"
-            onClick={submitQuery}
-            disabled={reranking}
-          >
-            {reranking ? "Finding moments…" : "Find new moments"}
-          </Button>
-        </div>
-      </aside>
-
       {/* Working area — two columns: 65% preview (hero) · 35% why this moment */}
       <div className="flex flex-1 min-w-0 flex-col">
         <div className="flex flex-1 min-h-0">
@@ -545,6 +439,112 @@ function ScoutWorkspace(p: WorkspaceProps) {
           />
         </PhaseContextPanel>
       </div>
+
+      {/* Tools panel — chat-style thread continuing from Import (now on the right) */}
+      <aside className="flex w-[320px] shrink-0 flex-col border-l border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-panel))]">
+        {/* Header */}
+        <div className="px-4 pt-4">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            Scout moments
+          </h2>
+        </div>
+
+        {/* Chat thread */}
+        <ScrollArea className="flex-1 min-h-0">
+          <ul className="flex flex-col space-y-4 px-4 pb-3 pt-6">
+            {/* Original Import intent + AI's first response */}
+            <ChatBubble
+              role="user"
+              text={
+                p.prompt.trim() ||
+                "Find the most interesting moments in my stream."
+              }
+            />
+            <ChatBubble
+              role="ai"
+              text={`I found ${moments.length} recommended moments.`}
+            />
+            {/* Follow-up turns (incl. loading + restore) */}
+            {thread.map((m) => (
+              <ChatBubble
+                key={m.id}
+                role={m.role}
+                text={m.text}
+                loading={m.loading}
+              >
+                {m.restore && (
+                  <button
+                    type="button"
+                    onClick={() => restoreScan(m.restore!)}
+                    className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+                  >
+                    <ChevronLeft className="size-3" />
+                    View previous scan
+                  </button>
+                )}
+              </ChatBubble>
+            ))}
+          </ul>
+        </ScrollArea>
+
+        {/* Sticky bottom composer */}
+        <div className="px-4 pt-3 pb-3">
+          <div className="flex flex-wrap gap-1.5">
+            {SCOUT_REFINE_CHIPS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setQuery(c)}
+                className="rounded-full border border-border bg-background px-2.5 py-1 text-sm text-foreground transition-colors duration-150 hover:border-foreground/30 hover:bg-accent hover:text-foreground"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+
+          <Card className="relative mt-4 border-none bg-[hsl(var(--surface-sunken))] p-3">
+            <Textarea
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submitQuery();
+                }
+              }}
+              placeholder="Ask Scout to find different moments…"
+              rows={2}
+              className="min-h-[60px] resize-none border-0 bg-transparent pr-10 text-sm shadow-none focus-visible:ring-0"
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  disabled={!query.trim()}
+                  onClick={() => setQuery(enhanceQuery(query))}
+                  aria-label="Enhance prompt"
+                  className="absolute bottom-2 right-2 text-violet-500 transition-all duration-150 ease-out hover:bg-violet-50 hover:text-violet-500"
+                >
+                  <Sparkles className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Enhance prompt</TooltipContent>
+            </Tooltip>
+          </Card>
+
+          <Button
+            variant="outline"
+            size="lg"
+            className="mt-3 w-full gap-1.5 border-border text-foreground hover:bg-muted"
+            onClick={submitQuery}
+            disabled={reranking}
+          >
+            {reranking ? "Finding moments…" : "Find new moments"}
+          </Button>
+        </div>
+      </aside>
     </>
   );
 }
