@@ -1,5 +1,9 @@
 # Design Notes
 
+## Checkpoint — Scout baseline before workflow stepper
+
+- Saved current Scout baseline before adding guided workflow navigation.
+
 ## Import — "Post to" platform dropdown
 
 - Screen changed: Import only (Scout/Editor/Export/routing untouched).

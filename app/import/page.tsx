@@ -1,18 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight,
   UploadCloud,
   Clock,
-  Folder,
   Link2,
-  Info,
   Sparkles,
   Play,
   ChevronDown,
   Check,
+  FileVideo,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -29,6 +28,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScoutSkeleton } from "@/components/ScoutSkeleton";
 import {
   recentRecordings,
@@ -42,7 +47,11 @@ import { cn } from "@/lib/utils";
 const SCAN_DURATION_MS = 1600;
 // Key used to hand the chosen intent off to Scout across the route.
 const INTENT_HANDOFF_KEY = "scout:intent";
-const PLATFORMS = ["TikTok", "Reels", "Shorts"] as const;
+
+const ASPECT_RATIOS = [
+  { value: "9:16", platforms: "TikTok • Reels • Shorts" },
+  { value: "4:5", platforms: "Instagram" },
+] as const;
 
 // Google Drive glyph (the import source shown in the screenshot).
 function GoogleDriveIcon({ className }: { className?: string }) {
@@ -79,21 +88,28 @@ function enhancePrompt(seed: string | undefined, prompt: string): string {
 export default function ImportPage() {
   const router = useRouter();
   const [selectedRecording, setSelectedRecording] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
-  // Intent + scan options. Enabled only once a video/URL is added.
-  const [platforms, setPlatforms] = useState<string[]>(["TikTok"]);
+  const [aspectRatios, setAspectRatios] = useState<string[]>(["9:16"]);
   const [selectedChips, setSelectedChips] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canContinue = selectedRecording !== null || linkUrl.trim().length > 0;
+  const hasSource =
+    selectedRecording !== null ||
+    uploadedFileName !== null ||
+    linkUrl.trim().length > 0;
+  const canContinue = hasSource;
   const canEnhance =
     canContinue && (selectedChips.length > 0 || prompt.trim().length > 0);
 
-  const togglePlatform = (p: string) =>
-    setPlatforms((cur) =>
-      cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]
+  const toggleAspect = (v: string) =>
+    setAspectRatios((cur) =>
+      cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]
     );
 
   // Toggling a chip also writes its prompt sentence into the textarea below,
@@ -115,8 +131,31 @@ export default function ImportPage() {
     }
   };
 
+  const handleFile = (file: File) => {
+    setUploadedFileName(file.name);
+    setSelectedRecording(null);
+    setUploadOpen(false);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const onPickRecording = (id: string) => {
+    setSelectedRecording(id);
+    setUploadedFileName(null);
+    setUploadOpen(false);
+  };
+
+  const clearSource = () => {
+    setSelectedRecording(null);
+    setUploadedFileName(null);
+  };
+
   // Show the AI-processing skeleton, then route to Scout. Mocked, not real work.
-  // Hand the chosen intent off so Scout's intent field is pre-filled.
   const handleFindMoments = () => {
     if (!canContinue) return;
     try {
@@ -133,20 +172,20 @@ export default function ImportPage() {
 
   if (scanning) return <ScoutSkeleton durationMs={SCAN_DURATION_MS} />;
 
+  const selectedRecordingObj =
+    selectedRecording !== null
+      ? recentRecordings.find((r) => r.id === selectedRecording)
+      : null;
+
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-6 pt-12 pb-16">
-      {/* Headline — short, evocative, centered. No subtitle.
-          Alternatives to swap in:
-            "Stream in. Shorts out."
-            "From stream to scroll."
-            "Your stream, the highlights." */}
       <h1 className="mb-10 text-center text-4xl font-bold tracking-tight text-foreground">
         Your stream, ready to post.
       </h1>
 
-      {/* 1. Source — link input group + Upload / Google Drive */}
+      {/* Unified widget — source (link/upload) + intent (chips/prompt) in one card */}
       <div className="rounded-xl border border-border/60 bg-background">
-        {/* URL input group (approximates shadcn InputGroup) */}
+        {/* URL input group */}
         <div className="p-2">
           <div className="flex h-12 items-center gap-2 rounded-lg border border-transparent px-3 transition-all duration-150 ease-out focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20">
             <Link2 className="size-4 shrink-0 text-muted-foreground" />
@@ -162,47 +201,69 @@ export default function ImportPage() {
 
         <Separator className="bg-border/40" />
 
-        {/* Upload / Google Drive (left) + Post-to dropdown & info (right) */}
+        {/* Upload / Google Drive (left) + Aspect-ratio dropdown (right) */}
         <div className="flex flex-wrap items-center gap-1 p-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-2 text-sm font-medium text-foreground transition-all duration-150 ease-out hover:bg-accent/40"
-          >
-            <UploadCloud className="size-4" />
-            Upload
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-2 text-sm font-medium text-foreground transition-all duration-150 ease-out hover:bg-accent/40"
-          >
-            <GoogleDriveIcon className="size-4" />
-            Google Drive
-          </Button>
+          {selectedRecordingObj || uploadedFileName ? (
+            <div className="flex items-center gap-2 rounded-md bg-accent/40 px-2.5 py-1.5 text-sm">
+              <FileVideo className="size-4 text-indigo-500" />
+              <span className="max-w-[280px] truncate font-medium">
+                {selectedRecordingObj
+                  ? selectedRecordingObj.title
+                  : uploadedFileName}
+              </span>
+              <button
+                type="button"
+                onClick={clearSource}
+                aria-label="Remove selection"
+                className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setUploadOpen(true)}
+                className="gap-2 text-sm font-medium text-foreground transition-all duration-150 ease-out hover:bg-accent/40"
+              >
+                <UploadCloud className="size-4" />
+                Upload
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-sm font-medium text-foreground transition-all duration-150 ease-out hover:bg-accent/40"
+              >
+                <GoogleDriveIcon className="size-4" />
+                Google Drive
+              </Button>
+            </>
+          )}
 
           <div className="ml-auto flex items-center gap-1">
-            {/* Post to — multi-select platform dropdown */}
+            {/* Aspect ratio — multi-select with platform tags */}
             <Popover>
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  aria-label="Post to platforms"
+                  aria-label="Aspect ratio"
                   className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm transition-all duration-150 ease-out hover:border-indigo-500/40 focus-visible:border-indigo-500 focus-visible:ring-2 focus-visible:ring-indigo-500/20 focus-visible:outline-none"
                 >
-                  <span className="text-muted-foreground">Post to</span>
+                  <span className="text-muted-foreground">Aspect ratio</span>
                   <span className="flex flex-wrap items-center gap-1">
-                    {platforms.length === 0 ? (
+                    {aspectRatios.length === 0 ? (
                       <span className="text-muted-foreground">Select</span>
                     ) : (
-                      platforms.map((p) => (
+                      aspectRatios.map((r) => (
                         <span
-                          key={p}
-                          className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[11px] font-medium text-indigo-500"
+                          key={r}
+                          className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-indigo-500"
                         >
-                          {p}
+                          {r}
                         </span>
                       ))
                     )}
@@ -210,114 +271,106 @@ export default function ImportPage() {
                   <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-40 p-1">
-                {PLATFORMS.map((p) => {
-                  const on = platforms.includes(p);
+              <PopoverContent align="end" className="w-64 p-1">
+                {ASPECT_RATIOS.map((r) => {
+                  const on = aspectRatios.includes(r.value);
                   return (
                     <button
-                      key={p}
+                      key={r.value}
                       type="button"
-                      onClick={() => togglePlatform(p)}
+                      onClick={() => toggleAspect(r.value)}
                       aria-pressed={on}
-                      className="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors duration-150 ease-out hover:bg-accent"
+                      className="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-2 text-sm transition-colors duration-150 ease-out hover:bg-accent"
                     >
-                      {p}
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium tabular-nums">
+                          {r.value}
+                        </span>
+                        <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {r.platforms}
+                        </span>
+                      </span>
                       {on && (
-                        <Check className="size-4 text-indigo-500" strokeWidth={3} />
+                        <Check
+                          className="size-4 text-indigo-500"
+                          strokeWidth={3}
+                        />
                       )}
                     </button>
                   );
                 })}
               </PopoverContent>
             </Popover>
+          </div>
+        </div>
 
+        <Separator className="bg-border/40" />
+
+        {/* Intent — suggestion chips + prompt textarea (same widget) */}
+        <div
+          className={cn(
+            "space-y-3 p-3 transition-opacity duration-150",
+            !canContinue && "opacity-60"
+          )}
+          aria-disabled={!canContinue}
+        >
+          <div className="flex flex-wrap gap-2">
+            {intentPresets.slice(0, 5).map((label) => {
+              const on = selectedChips.includes(label);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={!canContinue}
+                  onClick={() => toggleChip(label)}
+                  aria-pressed={on}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs transition-all duration-150 ease-out disabled:pointer-events-none disabled:opacity-50",
+                    on
+                      ? "border-indigo-500 bg-indigo-500/10 font-medium text-indigo-500"
+                      : "border-border text-muted-foreground hover:border-indigo-500/40 hover:text-foreground"
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="relative">
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              disabled={!canContinue}
+              placeholder={
+                canContinue
+                  ? "Describe your moments"
+                  : "Add a link or upload above to describe your moments."
+              }
+              rows={3}
+              className="min-h-[80px] max-h-[200px] resize-none border-0 bg-transparent pr-11 text-sm shadow-none focus-visible:ring-0"
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
-                  variant="ghost"
                   size="icon-sm"
-                  aria-label="Supported formats"
-                  className="text-muted-foreground transition-all duration-150 ease-out hover:bg-accent/40"
+                  variant="ghost"
+                  disabled={!canEnhance}
+                  onClick={() => setPrompt(enhancePrompt(selectedChips[0], prompt))}
+                  aria-label="Enhance prompt"
+                  className="absolute bottom-2 right-2 text-muted-foreground transition-all duration-150 ease-out hover:bg-accent/40 hover:text-foreground disabled:opacity-50"
                 >
-                  <Info className="size-4" />
+                  <Sparkles className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">
-                Supports MP4, MOV, or MKV — up to 8 hours
-              </TooltipContent>
+              <TooltipContent side="top">Enhance prompt</TooltipContent>
             </Tooltip>
           </div>
         </div>
       </div>
 
-      {/* 3 + 4. Prompt card — suggestion chips + textarea read as one input.
-          Disabled until a link/upload exists in the source widget above. */}
-      <Card
-        className={cn(
-          "gap-3 bg-muted/30 p-4 transition-opacity duration-150",
-          !canContinue && "opacity-60"
-        )}
-        aria-disabled={!canContinue}
-      >
-        {/* Suggestion chips (multi-select) */}
-        <div className="flex flex-wrap gap-2">
-          {intentPresets.map((label) => {
-            const on = selectedChips.includes(label);
-            return (
-              <button
-                key={label}
-                type="button"
-                disabled={!canContinue}
-                onClick={() => toggleChip(label)}
-                aria-pressed={on}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs transition-all duration-150 ease-out disabled:pointer-events-none disabled:opacity-50",
-                  on
-                    ? "border-indigo-500 bg-indigo-500/10 font-medium text-indigo-500"
-                    : "border-border text-muted-foreground hover:border-indigo-500/40 hover:text-foreground"
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Prompt textarea (auto-resizes via field-sizing) + AI enhance */}
-        <div className="relative">
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            disabled={!canContinue}
-            placeholder={
-              canContinue
-                ? "Describe the moments you want, or pick a few above."
-                : "Add a link or upload above to describe your moments."
-            }
-            rows={3}
-            className="min-h-[80px] max-h-[200px] resize-none border-0 bg-transparent pr-11 text-sm shadow-none focus-visible:ring-0"
-          />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="outline"
-                disabled={!canEnhance}
-                onClick={() => setPrompt(enhancePrompt(selectedChips[0], prompt))}
-                aria-label="Enhance prompt"
-                className="absolute bottom-2 right-2 border-violet-300 bg-violet-50 text-violet-700 transition-all duration-150 ease-out hover:border-violet-400 hover:bg-violet-100 hover:text-violet-700 disabled:opacity-50"
-              >
-                <Sparkles className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Enhance prompt</TooltipContent>
-          </Tooltip>
-        </div>
-      </Card>
-
-      {/* 5. CTA — the single indigo moment-of-commitment */}
+      {/* CTA */}
       <div className="mt-6 flex justify-center">
         <Button
           size="lg"
@@ -330,119 +383,149 @@ export default function ImportPage() {
               : "cursor-not-allowed bg-muted text-muted-foreground disabled:opacity-100"
           )}
         >
-          Find best moments
-          <ArrowRight className="ml-2 size-4" strokeWidth={2.5} />
+          Find moments
         </Button>
       </div>
 
-      {/* 6. Recent recordings */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Recent recordings
-          </h2>
-          <button
-            type="button"
-            className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground hover:underline"
-          >
-            <Folder className="size-3.5" />
-            Browse library
-          </button>
-        </div>
-        <Separator className="bg-border/40" />
+      {/* Upload popup — Upload tab + Recent tab */}
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogTitle className="sr-only">Add a video</DialogTitle>
+          <Tabs defaultValue="upload" className="gap-4 pt-6">
+            <TabsList className="w-full">
+              <TabsTrigger value="upload">Upload</TabsTrigger>
+              <TabsTrigger value="recent">Recent recordings</TabsTrigger>
+            </TabsList>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {recentRecordings.map((r) => {
-            const isSelected = selectedRecording === r.id;
-            return (
-              <Card
-                key={r.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedRecording(r.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSelectedRecording(r.id);
-                  }
+            <TabsContent value="upload">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
                 }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={onDrop}
                 className={cn(
-                  "group cursor-pointer gap-0 overflow-hidden p-0 transition-all duration-200 ease-out",
-                  isSelected
-                    ? "ring-2 ring-indigo-500"
-                    : "hover:shadow-md hover:ring-indigo-500/30"
+                  "flex w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-14 text-center transition-all duration-150 ease-out",
+                  isDragging
+                    ? "border-indigo-500 bg-indigo-500/5"
+                    : "border-border hover:border-indigo-500/40 hover:bg-accent/30"
                 )}
               >
-                <div
-                  className="relative aspect-video w-full overflow-hidden"
-                  style={
-                    !r.videoUrl && !r.thumbnail
-                      ? { background: thumbGradient(r.id) }
-                      : undefined
-                  }
-                >
-                  {r.videoUrl && (
-                    <video
-                      src={r.videoUrl}
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      preload="metadata"
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  )}
-                  {!r.videoUrl && r.thumbnail && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={r.thumbnail}
-                      alt=""
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  )}
+                <span className="flex size-12 items-center justify-center rounded-full bg-indigo-500/10 text-indigo-500">
+                  <UploadCloud className="size-6" />
+                </span>
+                <span className="space-y-1">
+                  <span className="block text-sm font-medium text-foreground">
+                    Drag and drop your video here
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    or click to browse
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Supports MP4, MOV, or MKV — up to 8 hours
+                </span>
+              </button>
+            </TabsContent>
 
-                  {/* Legibility overlay for the badges */}
-                  <div
-                    className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 to-black/0"
-                    aria-hidden
-                  />
-
-                  {/* Duration (top-left) + game tag (top-right) */}
-                  <Badge
-                    variant="secondary"
-                    className="absolute left-1.5 top-1.5 border-transparent bg-black/60 tabular-nums text-white backdrop-blur-sm"
+            <TabsContent value="recent">
+              <div className="grid max-h-[60vh] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3">
+                {recentRecordings.map((r) => (
+                  <Card
+                    key={r.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onPickRecording(r.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onPickRecording(r.id);
+                      }
+                    }}
+                    className="group cursor-pointer gap-0 overflow-hidden p-0 transition-all duration-200 ease-out hover:shadow-md hover:ring-2 hover:ring-indigo-500/30"
                   >
-                    {r.duration}
-                  </Badge>
-                  <Badge
-                    variant="secondary"
-                    className="absolute right-1.5 top-1.5 max-w-[60%] truncate border-transparent bg-black/60 text-white backdrop-blur-sm"
-                  >
-                    {r.game}
-                  </Badge>
+                    <div
+                      className="relative aspect-video w-full overflow-hidden"
+                      style={
+                        !r.videoUrl && !r.thumbnail
+                          ? { background: thumbGradient(r.id) }
+                          : undefined
+                      }
+                    >
+                      {r.videoUrl && (
+                        <video
+                          src={r.videoUrl}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="metadata"
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      )}
+                      {!r.videoUrl && r.thumbnail && (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={r.thumbnail}
+                          alt=""
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      )}
 
-                  {/* Hover play affordance */}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100">
-                    <span className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur">
-                      <Play className="size-4 translate-x-px" fill="currentColor" />
-                    </span>
-                  </div>
-                </div>
+                      <div
+                        className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 to-black/0"
+                        aria-hidden
+                      />
 
-                <div className="flex flex-col gap-0.5 p-2.5">
-                  <h3 className="truncate text-sm font-medium leading-snug">
-                    {r.title}
-                  </h3>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="size-3" />
-                    <span className="truncate">{r.recordedAt}</span>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
+                      <Badge
+                        variant="secondary"
+                        className="absolute left-1.5 top-1.5 border-transparent bg-black/60 tabular-nums text-white backdrop-blur-sm"
+                      >
+                        {r.duration}
+                      </Badge>
+                      <Badge
+                        variant="secondary"
+                        className="absolute right-1.5 top-1.5 max-w-[60%] truncate border-transparent bg-black/60 text-white backdrop-blur-sm"
+                      >
+                        {r.game}
+                      </Badge>
+
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100">
+                        <span className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur">
+                          <Play className="size-4 translate-x-px" fill="currentColor" />
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5 p-2.5">
+                      <h3 className="truncate text-sm font-medium leading-snug">
+                        {r.title}
+                      </h3>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="size-3" />
+                        <span className="truncate">{r.recordedAt}</span>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
